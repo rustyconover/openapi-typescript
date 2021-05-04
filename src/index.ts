@@ -26,14 +26,18 @@ export default async function openapiTS(
   const version = options?.version || swaggerVersion(schemaObj as OpenAPI2 | OpenAPI3);
 
   // 3. generate output
-  let output = `${WARNING_MESSAGE}
-  ${transformAll(schemaObj, {
+  let output = WARNING_MESSAGE;
+  const types = await transformAll(schemaObj, {
     formatter: options && typeof options.formatter === "function" ? options.formatter : undefined,
     immutableTypes: (options && options.immutableTypes) || false,
     rawSchema: options && options.rawSchema,
     version,
-  })}
-`;
+  });
+  for (const [k, v] of Object.entries(types)) {
+    if (typeof v === "string") {
+      output += `export interface ${k} {\n  ${v}\n}\n\n`;
+    }
+  }
 
   // 4. Prettify output
   let prettierOptions: prettier.Options = {

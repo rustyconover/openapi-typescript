@@ -13,10 +13,13 @@ interface TransformOptions {
   version: number;
 }
 
-export function transformAll(schema: any, { formatter, immutableTypes, rawSchema, version }: TransformOptions): string {
+export async function transformAll(
+  schema: any,
+  { formatter, immutableTypes, rawSchema, version }: TransformOptions
+): Promise<Record<string, string>> {
   const readonly = tsReadonly(immutableTypes);
 
-  let output = "";
+  let output: Record<string, string> = {} as any;
 
   let operations: Record<string, { operation: OperationObject; pathItem: PathItemObject }> = {};
 
@@ -24,73 +27,74 @@ export function transformAll(schema: any, { formatter, immutableTypes, rawSchema
   if (rawSchema) {
     switch (version) {
       case 2: {
-        return `export interface definitions {\n  ${transformSchemaObjMap(schema, {
+        output.definitions = transformSchemaObjMap(schema, {
           formatter,
           immutableTypes,
           required: Object.keys(schema),
-        })}\n}`;
+        });
+        return output;
       }
       case 3: {
-        return `export interface schemas {\n    ${transformSchemaObjMap(schema, {
+        output.schemas = transformSchemaObjMap(schema, {
           formatter,
           immutableTypes,
           required: Object.keys(schema),
-        })}\n  }\n\n`;
+        });
+        return output;
       }
     }
   }
 
   // #/paths (V2 & V3)
-  output += `export interface paths {\n`; // open paths
+  output.paths = "";
   if (schema.paths) {
-    output += transformPathsObj(schema.paths, {
+    output.paths += transformPathsObj(schema.paths, {
       globalParameters: (schema.components && schema.components.parameters) || schema.parameters,
       immutableTypes,
       operations,
       version,
     });
   }
-  output += `}\n\n`; // close paths
 
   switch (version) {
     case 2: {
       // #/definitions
       if (schema.definitions) {
-        output += `export interface definitions {\n  ${transformSchemaObjMap(schema.definitions, {
+        output.definitions = transformSchemaObjMap(schema.definitions, {
           formatter,
           immutableTypes,
           required: Object.keys(schema.definitions),
-        })}\n}\n\n`;
+        });
       }
 
       // #/parameters
       if (schema.parameters) {
         const required = Object.keys(schema.parameters);
-        output += `export interface parameters {\n    ${transformSchemaObjMap(schema.parameters, {
+        output.parameters = transformSchemaObjMap(schema.parameters, {
           formatter,
           immutableTypes,
           required,
-        })}\n  }\n\n`;
+        });
       }
 
       // #/parameters
       if (schema.responses) {
-        output += `export interface responses {\n    ${transformResponsesObj(schema.responses, {
+        output.responses = transformResponsesObj(schema.responses, {
           formatter,
           immutableTypes,
-        })}\n  }\n\n`;
+        });
       }
       break;
     }
     case 3: {
       // #/components
-      output += `export interface components {\n`; // open components
+      output.components = "";
 
       if (schema.components) {
         // #/components/schemas
         if (schema.components.schemas) {
           const required = Object.keys(schema.components.schemas);
-          output += `  ${readonly}schemas: {\n    ${transformSchemaObjMap(schema.components.schemas, {
+          output.components += `  ${readonly}schemas: {\n    ${transformSchemaObjMap(schema.components.schemas, {
             formatter,
             immutableTypes,
             required,
@@ -99,7 +103,7 @@ export function transformAll(schema: any, { formatter, immutableTypes, rawSchema
 
         // #/components/responses
         if (schema.components.responses) {
-          output += `  ${readonly}responses: {\n    ${transformResponsesObj(schema.components.responses, {
+          output.components += `  ${readonly}responses: {\n    ${transformResponsesObj(schema.components.responses, {
             formatter,
             immutableTypes,
           })}\n  }\n`;
@@ -108,7 +112,7 @@ export function transformAll(schema: any, { formatter, immutableTypes, rawSchema
         // #/components/parameters
         if (schema.components.parameters) {
           const required = Object.keys(schema.components.parameters);
-          output += `  ${readonly}parameters: {\n    ${transformSchemaObjMap(schema.components.parameters, {
+          output.components += `  ${readonly}parameters: {\n    ${transformSchemaObjMap(schema.components.parameters, {
             formatter,
             immutableTypes,
             required,
@@ -117,31 +121,34 @@ export function transformAll(schema: any, { formatter, immutableTypes, rawSchema
 
         // #/components/requestBodies
         if (schema.components.requestBodies) {
-          output += `  ${readonly}requestBodies: {\n    ${transformRequestBodies(schema.components.requestBodies, {
-            formatter,
-            immutableTypes,
-          })}\n  }\n`;
+          output.components += `  ${readonly}requestBodies: {\n    ${transformRequestBodies(
+            schema.components.requestBodies,
+            {
+              formatter,
+              immutableTypes,
+            }
+          )}\n  }\n`;
         }
 
         // #/components/headers
         if (schema.components.headers) {
-          output += `  ${readonly}headers: {\n    ${transformHeaderObjMap(schema.components.headers, {
+          output.components += `  ${readonly}headers: {\n    ${transformHeaderObjMap(schema.components.headers, {
             formatter,
             immutableTypes,
           })}  }\n`;
         }
       }
 
-      output += `}\n\n`; // close components
       break;
     }
   }
 
-  output += `export interface operations {\n`; // open operations
+  // #/operations
+  output.operations = "";
   if (Object.keys(operations).length) {
     Object.entries(operations).forEach(([operationId, { operation, pathItem }]) => {
-      if (operation.description) output += comment(operation.description); // handle comment
-      output += `  ${readonly}"${operationId}": {\n    ${transformOperationObj(operation, {
+      if (operation.description) output.operations += comment(operation.description); // handle comment
+      output.operations += `  ${readonly}"${operationId}": {\n    ${transformOperationObj(operation, {
         pathItem,
         globalParameters: (schema.components && schema.components.parameters) || schema.parameters,
         immutableTypes,
@@ -149,7 +156,13 @@ export function transformAll(schema: any, { formatter, immutableTypes, rawSchema
       })}\n  }\n`;
     });
   }
-  output += `}\n`; // close operations
 
-  return output.trim();
+  // cleanup: trim whitespace
+  for (const [k, v] of Object.entries(output)) {
+    if (typeof v === "string") {
+      output[k] = v.trim();
+    }
+  }
+
+  return output;
 }

@@ -81,9 +81,7 @@ function isJSON(contentType: string | null) {
 function parseSchema(schema: any, type: "YAML" | "JSON") {
   if (type === "YAML") {
     try {
-      const s = yaml.load(schema);
-      console.log({ type: typeof s });
-      return s;
+      return yaml.load(schema);
     } catch (err) {
       throw new Error(`YAML: ${err.toString()}`);
     }
